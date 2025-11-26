@@ -64,45 +64,85 @@ async function ingestCountry(country, dateStr, cadence) {
 }
 
 async function fetchTrending(countryCode, dateStr) {
-  // Use Serper "trends" endpoint (easier than raw Google Trends; needs SERPER_API_KEY)
+  const serpKey = process.env.SERPAPI_KEY;
+  if (serpKey) {
+    const url = new URL("https://serpapi.com/search");
+    url.searchParams.set("engine", "google_trends_trending_now");
+    url.searchParams.set("geo", countryCode.toUpperCase());
+    url.searchParams.set("hours", "24");
+    url.searchParams.set("api_key", serpKey);
+
+    const res = await fetch(url.toString());
+    if (!res.ok) throw new Error(`SerpApi fetch failed ${res.status}`);
+    const data = await res.json();
+    const items = data?.trending_searches || [];
+    if (!Array.isArray(items)) throw new Error("SerpApi response not an array");
+    return items.map((item, idx) => {
+      const term =
+        item.query ||
+        item.keyword ||
+        item.title ||
+        item.searchTerms ||
+        item.term ||
+        `item-${idx}`;
+      const traffic =
+        item.search_volume ||
+        item.formattedTraffic ||
+        item.traffic ||
+        item.increase_percentage ||
+        item.score ||
+        "";
+      const score = parseTraffic(String(traffic), idx);
+      const breakout =
+        typeof item.increase_percentage === "number" ? item.increase_percentage >= 500 : isBreakout(traffic);
+      return {
+        term,
+        score,
+        breakout_flag: breakout ? 1 : 0,
+        payload_json: JSON.stringify(item)
+      };
+    });
+  }
+
   const serperKey = process.env.SERPER_API_KEY;
-  if (!serperKey) {
-    throw new Error("SERPER_API_KEY not set");
+  if (serperKey) {
+    const res = await fetch("https://google.serper.dev/trends", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-KEY": serperKey
+      },
+      body: JSON.stringify({ gl: countryCode.toLowerCase() })
+    });
+    if (!res.ok) {
+      throw new Error(`Serper fetch failed ${res.status}`);
+    }
+    const data = await res.json();
+    const items = data?.trendingSearches || data?.trends || [];
+    if (!Array.isArray(items)) {
+      throw new Error("Serper response not an array");
+    }
+    return items.map((item, idx) => {
+      const term =
+        item.query ||
+        item.keyword ||
+        item.title ||
+        item.searchTerms ||
+        item.term ||
+        `item-${idx}`;
+      const traffic = item.formattedTraffic || item.traffic || item.score || item.value || "";
+      const score = parseTraffic(traffic, idx);
+      const breakout = isBreakout(traffic);
+      return {
+        term,
+        score,
+        breakout_flag: breakout ? 1 : 0,
+        payload_json: JSON.stringify(item)
+      };
+    });
   }
-  const res = await fetch("https://google.serper.dev/trends", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-KEY": serperKey
-    },
-    body: JSON.stringify({ gl: countryCode.toLowerCase() })
-  });
-  if (!res.ok) {
-    throw new Error(`Serper fetch failed ${res.status}`);
-  }
-  const data = await res.json();
-  const items = data?.trendingSearches || data?.trends || [];
-  if (!Array.isArray(items)) {
-    throw new Error("Serper response not an array");
-  }
-  return items.map((item, idx) => {
-    const term =
-      item.query ||
-      item.keyword ||
-      item.title ||
-      item.searchTerms ||
-      item.term ||
-      `item-${idx}`;
-    const traffic = item.formattedTraffic || item.traffic || item.score || item.value || "";
-    const score = parseTraffic(traffic, idx);
-    const breakout = isBreakout(traffic);
-    return {
-      term,
-      score,
-      breakout_flag: breakout ? 1 : 0,
-      payload_json: JSON.stringify(item)
-    };
-  });
+
+  throw new Error("SERPAPI_KEY or SERPER_API_KEY not set");
 }
 
 function proxyAgent() {

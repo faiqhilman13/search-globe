@@ -4,7 +4,10 @@ Node + SQLite backend with a React + three.js (r3f) frontend to browse Google Tr
 
 ## Backend (Fastify)
 1) Copy `.env.example` to `.env` and set `API_TOKEN` (any secret string), optionally tweak `PORT`/`CRON_SPEC`. If deploying with a volume, set `DATA_DIR` to the mounted path (e.g., `/data`).
-2) If using Apify fallback (when Google Trends blocks your network), set `APIFY_TOKEN` (from Apify) and optionally `APIFY_TASK` (defaults to `petrpatek~google-trends-scraper`).
+2) Trends source:
+   - Preferred: set `SERPAPI_KEY` (SerpApi, engine=google_trends_trending_now).
+   - Optional: set `SERPER_API_KEY` (Serper, if you have access to their trends endpoint).
+   - Optional: Apify fallback (`APIFY_TOKEN`, `APIFY_TASK`) if you want to keep it.
 3) Install deps (already done here): `npm install`
 4) Run server: `npm run dev` (or `npm start`)
 5) Trigger an ingest (required before the UI shows data):
