@@ -3,10 +3,10 @@ import path from "path";
 import Database from "better-sqlite3";
 import { allCountries } from "./countries.js";
 
-const dataDir = path.join(process.cwd(), "data");
-fs.mkdirSync(dataDir, { recursive: true });
+const baseDir = process.env.DATA_DIR || path.join(process.cwd(), "data");
+fs.mkdirSync(baseDir, { recursive: true });
 
-const dbFile = path.join(dataDir, "trends.db");
+const dbFile = path.join(baseDir, "trends.db");
 export const db = new Database(dbFile);
 
 export function initDb() {
