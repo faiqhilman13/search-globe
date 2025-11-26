@@ -1,0 +1,53 @@
+name: trends-connectivity-check
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_ingest:
+        description: "Also run ingest (requires secrets)"
+        required: false
+        default: "false"
+      date:
+        description: "Ingest date (YYYY-MM-DD). Defaults to today."
+        required: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check Trends endpoint (US daily)
+        run: |
+          set -eux
+          URL="https://trends.google.com/trends/api/dailytrends?hl=en-US&tz=0&geo=US&ns=15"
+          curl -s -D headers.txt "$URL" -o body.txt
+          head -n 5 headers.txt
+          head -n 5 body.txt
+          STATUS=$(head -n 1 headers.txt | awk '{print $2}')
+          if [ "$STATUS" != "200" ]; then
+            echo "Non-200 from Trends: $STATUS"
+            exit 1
+          fi
+          if ! head -n 1 body.txt | grep -q ")]}',"; then
+            echo "Body does not look like Trends JSON (missing prefix)."
+            exit 1
+          fi
+
+      - name: Run ingest (optional)
+        if: ${{ github.event.inputs.run_ingest == 'true' }}
+        env:
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+          APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
+          APIFY_TASK: ${{ secrets.APIFY_TASK }}
+          HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
+          HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
+          DATE: ${{ github.event.inputs.date }}
+        run: |
+          set -eux
+          if [ -z "${API_TOKEN:-}" ]; then
+            echo "API_TOKEN secret not set"; exit 1; fi
+          npm ci
+          DATE_VAL=${DATE:-$(date +%F)}
+          node -e "import { runIngest } from './src/trends.js'; runIngest({ dateStr: '$DATE_VAL', cadence: 'gha' }).then(r=>{console.log(r.slice(0,5));}).catch(e=>{console.error(e); process.exit(1);});"
