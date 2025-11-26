@@ -64,49 +64,36 @@ async function ingestCountry(country, dateStr, cadence) {
 }
 
 async function fetchTrending(countryCode, dateStr) {
-  // Use Apify actor fallback because direct Trends API is blocked on many networks.
-  const token = process.env.APIFY_TOKEN;
-  const taskOrActor = process.env.APIFY_TASK || "petrpatek~google-trends-scraper";
-  if (!token) {
-    throw new Error("APIFY_TOKEN not set");
+  // Use Serper "trends" endpoint (easier than raw Google Trends; needs SERPER_API_KEY)
+  const serperKey = process.env.SERPER_API_KEY;
+  if (!serperKey) {
+    throw new Error("SERPER_API_KEY not set");
   }
-  const input = {
-    searchTerms: [],
-    timeframe: "now 1-d",
-    geo: countryCode
-  };
-  const url = new URL(
-    `https://api.apify.com/v2/actor-tasks/${taskOrActor}/run-sync-get-dataset-items`
-  );
-  url.searchParams.set("token", token);
-
-  const res = await fetch(url.toString(), {
+  const res = await fetch("https://google.serper.dev/trends", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input)
+    headers: {
+      "Content-Type": "application/json",
+      "X-API-KEY": serperKey
+    },
+    body: JSON.stringify({ gl: countryCode.toLowerCase() })
   });
   if (!res.ok) {
-    throw new Error(`Apify fetch failed ${res.status}`);
+    throw new Error(`Serper fetch failed ${res.status}`);
   }
-  const items = await res.json();
+  const data = await res.json();
+  const items = data?.trendingSearches || data?.trends || [];
   if (!Array.isArray(items)) {
-    throw new Error("Apify response not an array");
+    throw new Error("Serper response not an array");
   }
-  // Actor output shape may vary; try to map common fields.
   return items.map((item, idx) => {
     const term =
-      item.title?.[0]?.query ||
-      item.title ||
       item.query ||
       item.keyword ||
+      item.title ||
+      item.searchTerms ||
       item.term ||
       `item-${idx}`;
-    const traffic =
-      item.formattedTraffic ||
-      item.traffic ||
-      item.value ||
-      item.score ||
-      "";
+    const traffic = item.formattedTraffic || item.traffic || item.score || item.value || "";
     const score = parseTraffic(traffic, idx);
     const breakout = isBreakout(traffic);
     return {
